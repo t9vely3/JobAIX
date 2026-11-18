@@ -517,6 +517,31 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   body > * { display: none !important; }
   body::before { content: '이 화면은 인쇄할 수 없습니다.'; display: block; padding: 40mm 0; text-align: center; font-size: 16pt; font-weight: 700; color: #0F1E3D; }
 }
+
+/* ---------- 부서 · 팀 묶음 ---------- */
+.rgroup, .pm-group { margin-top: 18px; border: 1px solid var(--g100); }
+.rgroup-h, .pm-group-h { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 10px 14px; background: var(--sky); border-left: 3px solid var(--blue); }
+.rgroup-h span, .pm-group-h span { font-size: 14px; font-weight: 700; color: var(--blue); letter-spacing: -0.02em; }
+.rgroup-h em, .pm-group-h em { font-style: normal; font-size: 12.5px; color: var(--g500); white-space: nowrap; }
+.rgroup .rec { padding-left: 14px; padding-right: 14px; }
+.rgroup .rec:last-child, .pm-group .pm-row:last-child { border-bottom: none; }
+.pm-group .pm-row { padding-left: 14px; padding-right: 14px; }
+
+/* ---------- 위쪽 버튼판 ---------- */
+.board { margin-top: 18px; border: 1px solid var(--g100); }
+.b-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 9px 12px; border-bottom: 1px solid var(--g100); }
+.b-row:last-child { border-bottom: none; }
+.b-row:first-child { background: var(--g50); }
+.b-lab { flex: 0 0 64px; font-size: 12.5px; font-weight: 700; color: var(--g500); }
+.board button { padding: 6px 11px; border: 1px solid var(--g200); background: var(--paper); font-size: 13px; font-weight: 700; color: var(--g700); }
+.board button b { margin-left: 5px; font-weight: 500; color: var(--g300); }
+.board button:hover { border-color: var(--blue); color: var(--blue); }
+.board button.all { color: var(--g500); }
+.board button.on { background: var(--blue); border-color: var(--blue); color: var(--paper); }
+.board button.on b { color: #D3DDF6; }
+.board button.alert { border-color: #F5C451; background: #FFF8E6; color: #7A5200; }
+.board button.alert.on { background: #9A6700; border-color: #9A6700; color: var(--paper); }
+#permBoard .board { margin: 14px 0 4px; }
 </style>
 </head>
 <body>
@@ -1156,7 +1181,7 @@ function saveBoxHtml() {
       <div class="head">
         <span class="kick">Save</span>
         <span class="ttl">학생 정보 저장</span>
-        <span class="sub">저장하면 승인된 관리인원이 저장 목록에서 이 결과 화면을 그대로 다시 열어 볼 수 있습니다. 담당 멘토는 <b>${esc(USER ? USER.name : '')}</b>${USER && (USER.dept || USER.team) ? ' · ' + esc(placeOf(USER)) : ''}(으)로 남습니다.</span>
+        <span class="sub">저장하면 나와 우리 팀장·부서장, 책임자가 저장 목록에서 이 결과 화면을 그대로 다시 열어 볼 수 있습니다. 담당 멘토는 <b>${esc(USER ? USER.name : '')}</b>${USER && (USER.dept || USER.team) ? ' · ' + esc(placeOf(USER)) : ''}(으)로 남습니다.</span>
       </div>
       <div class="fields">
         <div class="fld2">
@@ -1274,7 +1299,7 @@ function scope() {
   if (!USER) return '';
   if (USER.status === 'owner') return 'all';
   if (USER.status !== 'approved') return '';
-  return { all: 'all', dept: 'dept', team: 'team' }[USER.role] || '';
+  return { all: 'all', dept: 'dept', team: 'team' }[USER.role] || 'mine';   // 직원은 내가 저장한 것만
 }
 const canView = () => !!scope();
 const nowIso = () => new Date().toISOString();
@@ -1284,7 +1309,7 @@ function when(iso) {
   return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 function cleanName(v) { return String(v || '').replace(/\s+/g, '').slice(0, 10); }
-const ROLE_KO = { staff: '직원', team: '팀장', dept: '부장', all: '전체 보기' };
+const ROLE_KO = { staff: '직원', team: '팀장', dept: '부장', all: '임원 (전체 보기)' };
 const teamsOf = d => ((ORG.find(o => o.name === d) || {}).teams || []);
 function placeOf(x) { return [x.dept, x.team].filter(Boolean).join(' ') || '소속 없음'; }
 
@@ -1394,7 +1419,7 @@ function enterApp() {
 
 async function logout() {
   if (auth) { try { await auth.signOut(); } catch (e) {} }
-  USER = null; RECORDS = []; LIST_DEPT = '전체'; LIST_TEAM = '전체';
+  USER = null; RECORDS = []; LIST_DEPT = '전체'; LIST_TEAM = '전체'; PERM_SEL = null;
   restart();
   document.getElementById('userbox').hidden = true;
   closeVeil('permVeil');
@@ -1413,7 +1438,7 @@ function renderUserbox() {
   box.innerHTML = `<div class="who">${esc(USER.name)}<span class="role">${role}${place ? ' · ' + esc(place) : ''}</span></div>
     <div class="ub-btns">
       <button type="button" class="${VIEW === 'check' ? 'on' : ''}" onclick="restart()">새 진단</button>
-      ${canView() ? `<button type="button" class="${VIEW !== 'check' ? 'on' : ''}" onclick="openList()">저장 목록</button>` : ''}
+      ${canView() ? `<button type="button" class="${VIEW !== 'check' ? 'on' : ''}" onclick="openList()">${scope() === 'mine' ? '내 저장 목록' : '저장 목록'}</button>` : ''}
       ${isOwner() ? `<button type="button" onclick="openPerm()">권한 관리${PENDING_COUNT ? `<span class="badge">${PENDING_COUNT}</span>` : ''}</button>` : ''}
       <button type="button" class="out" onclick="logout()">로그아웃</button>
     </div>`;
@@ -1459,6 +1484,7 @@ async function saveCheck() {
 async function openList() {
   if (!canView()) return;
   VIEW = 'list'; REC = null; CONFIG.cutoff = BASE_CUTOFF;
+  if (scope() === 'dept') { LIST_DEPT = USER.dept || ''; LIST_TEAM = '전체'; }
   renderUserbox();
   renderList(true);
   await loadRecords();
@@ -1469,6 +1495,7 @@ async function loadRecords() {
     let q = db.collection('checks');
     if (scope() === 'dept') q = q.where('dept', '==', USER.dept || '');
     if (scope() === 'team') q = q.where('dept', '==', USER.dept || '').where('team', '==', USER.team || '');
+    if (scope() === 'mine') q = q.where('uid', '==', USER.uid);
     const snap = await q.get();
     RECORDS = snap.docs.map(d => Object.assign({ id: d.id }, d.data()))
       .sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')));
@@ -1476,46 +1503,94 @@ async function loadRecords() {
   if (VIEW === 'list') renderList();
 }
 function shortVerdict(r) { return r.pass ? '가능' : (/요건|대상|어렵/.test(r.verdict || '') ? '대상 아님' : '미달'); }
-const deptOf = r => r.dept || '부서 없음';
-const teamOf = r => r.team || '팀 없음';
-function filtered(skipQ) {
-  const k = skipQ ? '' : LIST_Q.replace(/[^0-9가-힣a-zA-Z]/g, '');
-  return RECORDS.filter(r => (LIST_DEPT === '전체' || deptOf(r) === LIST_DEPT)
-    && (LIST_TEAM === '전체' || teamOf(r) === LIST_TEAM)
+const EXEC = '임원';
+// 진단 한 건이 들어갈 칸 [부서, 팀]. 부서 없이 임원이 저장한 건은 '임원' 칸
+function keyOfRec(r) { if (r.dept) return [r.dept, r.team || '']; if (r.mentorRole === 'all') return [EXEC, '']; return ['', '']; }
+// 사람이 들어갈 칸. 임원은 소속과 관계없이 '임원' 칸
+function keyOfMember(m) { if (m.role === 'all') return [EXEC, '']; return [m.dept || '', m.team || '']; }
+function inSel(k, d, t) {
+  if (d === '전체') return true;
+  if (k[0] !== d) return false;
+  return t === '전체' || k[1] === t;
+}
+function filtered() {
+  const k = LIST_Q.replace(/[^0-9가-힣a-zA-Z]/g, '');
+  return RECORDS.filter(r => inSel(keyOfRec(r), LIST_DEPT, LIST_TEAM)
     && (!k || (String(r.name || '') + String(r.contact || '') + String(r.mentor || '')).replace(/[^0-9가-힣a-zA-Z]/g, '').includes(k)));
 }
+// 칸 순서: 임원 → 조직 목록 순서(부서 → 팀) → 소속 없음
+function orderOf(dept, team) {
+  if (dept === EXEC) return [-1, 0, '', ''];
+  const di = ORG.findIndex(o => o.name === dept);
+  const ti = teamsOf(dept).indexOf(team);
+  return [di < 0 ? (dept ? 900 : 999) : di, ti < 0 ? (team ? 900 : 950) : ti, dept || '', team || ''];
+}
+function cmpOrder(a, b) {
+  for (let i = 0; i < 4; i++) { if (a[i] < b[i]) return -1; if (a[i] > b[i]) return 1; }
+  return 0;
+}
+function groupBy(items, keyFn) {
+  const map = new Map();
+  items.forEach(x => { const k = keyFn(x); const key = k.join('\u0001'); if (!map.has(key)) map.set(key, { k, items: [] }); map.get(key).items.push(x); });
+  return Array.from(map.values()).sort((a, b) => cmpOrder(orderOf(a.k[0], a.k[1]), orderOf(b.k[0], b.k[1])));
+}
+function groupLabel(dept, team) {
+  if (dept === EXEC) return '임원';
+  if (!dept) return '소속 없음';
+  return dept + ' · ' + (team || '팀 없음');
+}
+
 function listRowsHtml() {
   const rows = filtered();
   if (!RECORDS.length) return '<div class="blank">아직 저장된 진단이 없습니다.</div>';
-  if (!rows.length) return '<div class="blank">조건에 맞는 진단이 없습니다.</div>';
-  const tag = r => scope() === 'all' ? placeOf(r) : scope() === 'dept' ? teamOf(r) : '';
-  return rows.map(r => `<div class="rec" data-id="${esc(r.id)}" role="button" tabindex="0">
-      <div class="who">${esc(r.name || '이름 없음')}${tag(r) ? `<span class="dtag">${esc(tag(r))}</span>` : ''}<small>${esc(r.contact || '—')} · 담당 ${esc(r.mentor || '—')} · ${esc(when(r.savedAt))}</small></div>
+  if (!rows.length) return '<div class="blank">이 칸에 저장된 진단이 없습니다.</div>';
+  const row = r => `<div class="rec" data-id="${esc(r.id)}" role="button" tabindex="0">
+      <div class="who">${esc(r.name || '이름 없음')}<small>${esc(r.contact || '—')} · 담당 ${esc(r.mentor || '—')} · ${esc(when(r.savedAt))}</small></div>
       <div class="sc ${r.pass ? 'ok' : ''}">${r.total != null ? r.total : '—'}<small class="${r.pass ? 'ok' : ''}">${shortVerdict(r)}</small></div>
-    </div>`).join('');
+    </div>`;
+  // 팀장은 자기 팀뿐이라 묶지 않는다. 그 외에는 부서 · 팀별로 칸을 나눈다
+  if (scope() === 'team' || scope() === 'mine') return rows.map(row).join('');
+  return groupBy(rows, keyOfRec).map(g => `<section class="rgroup">
+      <header class="rgroup-h"><span>${esc(groupLabel(g.k[0], g.k[1]))}</span><em>${g.items.length}건 · 가능 ${g.items.filter(r => r.pass).length}건</em></header>
+      ${g.items.map(row).join('')}
+    </section>`).join('');
 }
 function sumHtml() {
   const rows = filtered();
   return `<b>${rows.length}</b>건 · 가능 <b>${rows.filter(r => r.pass).length}</b>건`;
 }
-function chip(group, v, n, on) { return `<button type="button" data-${group}="${esc(v)}" class="${on ? 'on' : ''}">${esc(v)}<b>${n}</b></button>`; }
+// 위쪽 버튼판: 누르면 그 칸만 보인다
+function tabBtn(label, n, d, t, on, extra) {
+  return `<button type="button" data-d="${esc(d)}" data-t="${esc(t)}" class="${on ? 'on' : ''} ${extra || ''}">${esc(label)}<b>${n}</b></button>`;
+}
+function boardHtml(items, keyFn, cur, opts) {
+  // items 안의 칸들과 조직 목록의 칸들을 모두 버튼으로 만든다
+  const count = (d, t) => items.filter(x => inSel(keyFn(x), d, t)).length;
+  const on = (d, t) => cur.d === d && cur.t === t;
+  const depts = opts.onlyDept ? [opts.onlyDept]
+    : Array.from(new Set(ORG.map(o => o.name).concat(items.map(x => keyFn(x)[0]).filter(d => d && d !== EXEC))));
+  let html = '<div class="board">';
+  if (opts.top) html += `<div class="b-row"><span class="b-lab">${opts.topLabel || '보기'}</span>${opts.top}</div>`;
+  depts.forEach(d => {
+    const teams = Array.from(new Set(teamsOf(d).concat(items.map(keyFn).filter(k => k[0] === d).map(k => k[1]))));
+    html += `<div class="b-row"><span class="b-lab">${esc(d)}</span>${tabBtn('부서 전체', count(d, '전체'), d, '전체', on(d, '전체'), 'all')}${teams.filter(t => t).map(t => tabBtn(t, count(d, t), d, t, on(d, t))).join('')}${teams.includes('') && count(d, '') ? tabBtn('팀 없음', count(d, ''), d, '', on(d, '')) : ''}</div>`;
+  });
+  return html + '</div>';
+}
 function chipsHtml() {
   const sc = scope();
-  let html = '';
-  if (sc === 'all') {
-    const depts = Array.from(new Set(ORG.map(o => o.name).concat(RECORDS.map(deptOf))));
-    html += `<div class="dchips" id="dChips">${chip('d', '전체', RECORDS.length, LIST_DEPT === '전체')}${depts.map(d => chip('d', d, RECORDS.filter(r => deptOf(r) === d).length, LIST_DEPT === d)).join('')}</div>`;
-  }
-  const dept = sc === 'all' ? LIST_DEPT : sc === 'dept' ? (USER.dept || '') : null;
-  if (dept && dept !== '전체') {
-    const inDept = RECORDS.filter(r => deptOf(r) === (sc === 'dept' ? deptOf(r) : dept));
-    const teams = Array.from(new Set(teamsOf(dept).concat(inDept.map(teamOf))));
-    html += `<div class="dchips" id="tChips">${chip('t', '전체', inDept.length, LIST_TEAM === '전체')}${teams.map(t => chip('t', t, inDept.filter(r => teamOf(r) === t).length, LIST_TEAM === t)).join('')}</div>`;
-  }
-  return html;
+  if (sc === 'team' || sc === 'mine') return '';
+  const cur = { d: LIST_DEPT, t: LIST_TEAM };
+  const cnt = (d, t) => RECORDS.filter(r => inSel(keyOfRec(r), d, t)).length;
+  if (sc === 'dept') return boardHtml(RECORDS, keyOfRec, cur, { onlyDept: USER.dept || '' });
+  let top = tabBtn('전체', RECORDS.length, '전체', '전체', cur.d === '전체');
+  if (cnt(EXEC, '전체')) top += tabBtn('임원', cnt(EXEC, '전체'), EXEC, '전체', cur.d === EXEC);
+  if (cnt('', '')) top += tabBtn('소속 없음', cnt('', ''), '', '', cur.d === '' && cur.t === '');
+  return boardHtml(RECORDS, keyOfRec, cur, { top });
 }
 function listTitle() {
   const sc = scope();
+  if (sc === 'mine') return '내 저장 진단';
   if (sc === 'all') return '전체 저장 진단';
   if (sc === 'dept') return `${esc(USER.dept || '부서 없음')} 저장 진단`;
   return `${esc(placeOf(USER))} 저장 진단`;
@@ -1525,7 +1600,7 @@ function renderList(loading) {
   document.getElementById('count').textContent = 'Records';
   document.getElementById('bar').style.width = '0%';
   renderIndex(activeSteps(), -1, false);
-  const label = { all: '전체 보기', dept: '부장 · 우리 부서만', team: '팀장 · 우리 팀만' }[scope()] || '';
+  const label = { all: '전체 보기', dept: '부장 · 우리 부서만', team: '팀장 · 우리 팀만', mine: '직원 · 내가 저장한 것만' }[scope()] || '';
   document.getElementById('stage').innerHTML = `<div class="listview">
     <div class="lv-head">
       <div><div class="kicker">Records · ${label}</div><h2>${listTitle()}</h2></div>
@@ -1546,8 +1621,7 @@ function renderList(loading) {
   document.getElementById('lvQ').oninput = e => { LIST_Q = e.target.value; document.getElementById('lvRows').innerHTML = listRowsHtml(); document.getElementById('lvSum').innerHTML = sumHtml(); };
   document.getElementById('chipWrap').onclick = e => {
     const b = e.target.closest('button'); if (!b) return;
-    if (b.dataset.d !== undefined) { LIST_DEPT = b.dataset.d; LIST_TEAM = '전체'; }
-    if (b.dataset.t !== undefined) LIST_TEAM = b.dataset.t;
+    LIST_DEPT = b.dataset.d; LIST_TEAM = b.dataset.t;
     redraw();
   };
   const rows = document.getElementById('lvRows');
@@ -1610,6 +1684,35 @@ function checkPlace(role, dept, team) {
   if (role === 'team' && (!dept || !team)) return '팀장은 부서와 팀을 정해야 합니다';
   return '';
 }
+// 권한 관리에서 지금 보고 있는 칸: { kind: 'pending' | 'denied' | 'group', d, t }
+let PERM_SEL = null;
+function permMembers(list, sel) {
+  if (sel.kind === 'pending') return list.filter(m => (m.status || 'pending') === 'pending');
+  if (sel.kind === 'denied') return list.filter(m => m.status === 'denied');
+  return list.filter(m => m.status === 'approved' && inSel(keyOfMember(m), sel.d, sel.t));
+}
+function permSelLabel(sel) {
+  if (sel.kind === 'pending') return '승인 대기';
+  if (sel.kind === 'denied') return '거절 · 해제됨';
+  if (sel.d === '전체') return '승인된 전체';
+  if (sel.d === EXEC) return '임원';
+  if (sel.d === '') return '소속 없음';
+  return sel.t === '전체' ? sel.d + ' 전체' : groupLabel(sel.d, sel.t);
+}
+function permBoardHtml(list) {
+  const approvedList = list.filter(m => m.status === 'approved');
+  const n = (kind) => list.filter(m => (m.status || 'pending') === kind).length;
+  const cur = PERM_SEL.kind === 'group' ? { d: PERM_SEL.d, t: PERM_SEL.t } : { d: null, t: null };
+  const cnt = (d, t) => approvedList.filter(m => inSel(keyOfMember(m), d, t)).length;
+  const k = (kind, label, num, extra) => `<button type="button" data-kind="${kind}" class="${PERM_SEL.kind === kind ? 'on' : ''} ${extra || ''}">${label}<b>${num}</b></button>`;
+  let top = k('pending', '승인 대기', n('pending'), n('pending') ? 'alert' : '')
+    + tabBtn('승인된 전체', approvedList.length, '전체', '전체', cur.d === '전체')
+    + tabBtn('임원', cnt(EXEC, '전체'), EXEC, '전체', cur.d === EXEC);
+  if (cnt('', '')) top += tabBtn('소속 없음', cnt('', ''), '', '', cur.d === '' && cur.t === '');
+  top += k('denied', '거절 · 해제', n('denied'));
+  return `<div id="permBoard">${boardHtml(approvedList, keyOfMember, cur, { top, topLabel: '명단' })}</div>`;
+}
+
 async function openPerm() {
   if (!isOwner()) return;
   const body = document.getElementById('permBody');
@@ -1619,7 +1722,7 @@ async function openPerm() {
   try { await loadDepts(); list = await fetchMembers(); } catch (x) { body.innerHTML = '<div class="blank">불러오지 못했습니다.</div>'; return; }
   PENDING_COUNT = list.filter(m => m.status === 'pending').length; renderUserbox();
   const others = list.filter(m => m.id !== USER.uid);
-  const groups = [['pending', '승인 대기'], ['approved', '승인됨'], ['denied', '거절 · 해제됨']];
+  if (!PERM_SEL) PERM_SEL = others.some(m => (m.status || 'pending') === 'pending') ? { kind: 'pending' } : { kind: 'group', d: '전체', t: '전체' };
   const label = { pending: '대기', approved: '승인', denied: '해제' };
   const btns = m => m.status === 'pending'
       ? `<button class="yes" data-act="approved" data-id="${esc(m.id)}">승인</button><button data-act="denied" data-id="${esc(m.id)}">거절</button>`
@@ -1642,12 +1745,18 @@ async function openPerm() {
     </div>
     <div class="pm-row"><div class="nm">${esc(USER.name)}<small>책임자 · 전체 보기 · 권한 관리</small></div>
       <div class="bt">${ctrls(USER.uid, { dept: USER.dept, team: USER.team, self: true })}<button class="yes" data-act="self" data-id="${esc(USER.uid)}">내 소속 저장</button></div></div>` +
-    (others.length ? groups.map(([st, t]) => {
-      const g = others.filter(m => (m.status || 'pending') === st);
-      return g.length ? `<div class="pm-sec">${t} ${g.length}명</div>` + g.map(m => `<div class="pm-row">
-          <div class="nm">${esc(m.name || '이름 없음')}<small>${st === 'approved' ? esc((ROLE_KO[m.role] || '직원') + ' · ' + placeOf(m)) : '신청 ' + esc(when(m.requestedAt))}</small></div>
-          <div class="bt"><span class="st ${st}">${label[st]}</span>${ctrls(m.id, m)}${btns(m)}</div>
-        </div>`).join('') : '';
+    permBoardHtml(others) + (others.length ? [PERM_SEL].map(() => {
+      const row = m => `<div class="pm-row">
+          <div class="nm">${esc(m.name || '이름 없음')}<small>${m.status === 'approved' ? esc(ROLE_KO[m.role] || '직원') : '신청 ' + esc(when(m.requestedAt))}</small></div>
+          <div class="bt"><span class="st ${m.status || 'pending'}">${label[m.status || 'pending']}</span>${ctrls(m.id, m)}${btns(m)}</div>
+        </div>`;
+      const rank = { all: 0, dept: 1, team: 2, staff: 3 };
+      const g = permMembers(others, PERM_SEL)
+        .sort((a, b) => (rank[a.role] ?? 9) - (rank[b.role] ?? 9) || String(a.name).localeCompare(String(b.name), 'ko'));
+      return `<section class="pm-group">
+          <header class="pm-group-h"><span>${esc(permSelLabel(PERM_SEL))}</span><em>${g.length}명</em></header>
+          ${g.length ? g.map(row).join('') : '<div class="blank">이 칸에 사람이 없습니다.</div>'}
+        </section>`;
     }).join('') : '<div class="blank">아직 권한을 신청한 사람이 없습니다.</div>');
 
   const addDept = async () => {
@@ -1679,6 +1788,12 @@ async function openPerm() {
     }
   };
   body.onclick = async e => {
+    const pb = e.target.closest('#permBoard button');
+    if (pb) {
+      PERM_SEL = pb.dataset.kind ? { kind: pb.dataset.kind } : { kind: 'group', d: pb.dataset.d, t: pb.dataset.t };
+      openPerm();
+      return;
+    }
     const at = e.target.closest('button[data-addteam]');
     if (at) { addTeam(at.dataset.addteam); return; }
     const dd = e.target.closest('button[data-deldept]');
