@@ -435,6 +435,18 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 .pm-depts .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 12px; }
 .pm-depts .chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--sky); color: var(--blue); font-size: 13px; font-weight: 700; }
 .pm-depts .chip button { color: var(--g500); font-size: 14px; line-height: 1; }
+.org-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 0; border-bottom: 1px dashed var(--g100); }
+.org-row .chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; background: var(--g50); color: var(--g700); font-size: 12.5px; font-weight: 700; }
+.org-row .chip.dept { background: var(--blue); color: var(--paper); }
+.org-row .chip.dept button { color: #D3DDF6; }
+.org-row .chip button { color: var(--g500); font-size: 14px; line-height: 1; }
+.org-row .addteam { display: inline-flex; }
+.org-row .addteam input { width: 92px; padding: 5px 8px; border: 1px solid var(--g200); font: inherit; font-size: 12.5px; outline: none; }
+.org-row .addteam input:focus { border-color: var(--blue); }
+.org-row .addteam button { padding: 5px 9px; background: var(--sky); color: var(--blue); font-weight: 700; }
+.pm-depts .add { margin-top: 12px; }
+#chipWrap .dchips + .dchips { margin-top: 8px; }
+#tChips button.on { background: var(--navy); border-color: var(--navy); }
 .pm-depts .add { display: flex; gap: 8px; }
 .pm-depts .add input { flex: 1; padding: 8px 10px; border: 1px solid var(--g200); font: inherit; font-size: 14px; outline: none; }
 .pm-depts .add input:focus { border-color: var(--blue); }
@@ -498,6 +510,13 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   .gate-card h1 { font-size: 22px; }
   .lv-head h2 { font-size: 22px; }
 }
+
+/* ---------- 인쇄 막기 ---------- */
+@media print {
+  html, body { background: #fff !important; }
+  body > * { display: none !important; }
+  body::before { content: '이 화면은 인쇄할 수 없습니다.'; display: block; padding: 40mm 0; text-align: center; font-size: 16pt; font-weight: 700; color: #0F1E3D; }
+}
 </style>
 </head>
 <body>
@@ -512,13 +531,6 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
     </div>
 
     <form id="gForm" autocomplete="on">
-      <div class="fld" id="gRoleRow" hidden>
-        <label>구분</label>
-        <div class="seg" id="gRole">
-          <button type="button" data-r="staff" class="on">직원</button>
-          <button type="button" data-r="manager">관리인원</button>
-        </div>
-      </div>
       <div class="fld"><label for="gName">이름</label><input id="gName" maxlength="10" placeholder="멘토 이름" autocomplete="username"></div>
       <div class="fld"><label for="gPw">비밀번호</label><input type="password" id="gPw" placeholder="6자 이상" autocomplete="current-password"></div>
       <div class="fld" id="gPw2Row" hidden><label for="gPw2">비밀번호 확인</label><input type="password" id="gPw2" autocomplete="new-password"></div>
@@ -1144,7 +1156,7 @@ function saveBoxHtml() {
       <div class="head">
         <span class="kick">Save</span>
         <span class="ttl">학생 정보 저장</span>
-        <span class="sub">저장하면 승인된 관리인원이 저장 목록에서 이 결과 화면을 그대로 다시 열어 볼 수 있습니다. 담당 멘토는 <b>${esc(USER ? USER.name : '')}</b>${USER && USER.dept ? ' · ' + esc(USER.dept) : ''}(으)로 남습니다.</span>
+        <span class="sub">저장하면 승인된 관리인원이 저장 목록에서 이 결과 화면을 그대로 다시 열어 볼 수 있습니다. 담당 멘토는 <b>${esc(USER ? USER.name : '')}</b>${USER && (USER.dept || USER.team) ? ' · ' + esc(placeOf(USER)) : ''}(으)로 남습니다.</span>
       </div>
       <div class="fields">
         <div class="fld2">
@@ -1176,7 +1188,7 @@ function savedBoxHtml() {
         <div class="cf-row"><dt>학생명</dt><dd>${esc(r.name || '—')}</dd></div>
         <div class="cf-row"><dt>연락처</dt><dd>${esc(r.contact || '—')}</dd></div>
         <div class="cf-row"><dt>담당 멘토</dt><dd>${esc(r.mentor || '—')}</dd></div>
-        <div class="cf-row"><dt>부서</dt><dd>${esc(r.dept || '부서 없음')}</dd></div>
+        <div class="cf-row"><dt>부서 · 팀</dt><dd>${esc(placeOf(r))}</dd></div>
         <div class="cf-row"><dt>저장 시각</dt><dd>${esc(when(r.savedAt))}</dd></div>
       </dl>
     </div>
@@ -1249,15 +1261,22 @@ try {
   }
 } catch (e) { console.warn('저장 공간에 연결하지 못했습니다', e); auth = null; db = null; }
 
-let USER = null;          // { uid, name, role: 'staff' | 'manager', dept, status: 'owner' | 'approved' | 'pending' | 'denied' }
+let USER = null;          // { uid, name, role: 'staff' | 'team' | 'dept' | 'all', dept, team, status: 'owner' | 'approved' | 'pending' | 'denied' }
 let VIEW = 'check';       // check 진단 · list 저장 목록 · record 저장본
-let RECORDS = [], REC = null, LIST_Q = '', LIST_DEPT = '전체';
+let RECORDS = [], REC = null, LIST_Q = '', LIST_DEPT = '전체', LIST_TEAM = '전체';
 let SAVED_ID = null, DIRTY = false;
 let SIGNING_UP = false;
-let DEPTS = [];           // 부서 목록 (책임자가 관리)
+let ORG = [];             // 부서와 팀 목록 [{ name, teams: [] }] (책임자가 관리)
 const isOwner = () => !!(USER && USER.status === 'owner');
 const canUse = () => !!(USER && (USER.status === 'owner' || USER.status === 'approved'));
-const canView = () => !!(USER && (USER.status === 'owner' || (USER.status === 'approved' && USER.role === 'manager')));
+// 보는 범위: all 전체 · dept 우리 부서 · team 우리 팀 · '' 못 봄
+function scope() {
+  if (!USER) return '';
+  if (USER.status === 'owner') return 'all';
+  if (USER.status !== 'approved') return '';
+  return { all: 'all', dept: 'dept', team: 'team' }[USER.role] || '';
+}
+const canView = () => !!scope();
 const nowIso = () => new Date().toISOString();
 function when(iso) {
   const d = new Date(iso); if (isNaN(d)) return '—';
@@ -1265,10 +1284,12 @@ function when(iso) {
   return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 function cleanName(v) { return String(v || '').replace(/\s+/g, '').slice(0, 10); }
-const ROLE_KO = { staff: '직원', manager: '관리인원' };
+const ROLE_KO = { staff: '직원', team: '팀장', dept: '부장', all: '전체 보기' };
+const teamsOf = d => ((ORG.find(o => o.name === d) || {}).teams || []);
+function placeOf(x) { return [x.dept, x.team].filter(Boolean).join(' ') || '소속 없음'; }
 
 /* ---------- 로그인 · 권한 신청 화면 ---------- */
-let GMODE = 'login', GROLE = 'staff';
+let GMODE = 'login';
 function showGate(card) {
   document.getElementById('gate').hidden = false;
   document.getElementById('gateCard').hidden = card !== 'login';
@@ -1280,22 +1301,15 @@ function setGMode(m) {
   GMODE = m;
   document.querySelectorAll('#gateTabs button').forEach(x => x.classList.toggle('on', x.dataset.g === m));
   const su = m === 'signup';
-  document.getElementById('gRoleRow').hidden = !su;
   document.getElementById('gPw2Row').hidden = !su;
   document.getElementById('gBtn').textContent = su ? '권한 신청하기' : '로그인';
   document.getElementById('gTip').textContent = su
-    ? '신청하면 책임자가 사이트에서 승인하고 부서를 정해 줍니다. 승인 뒤부터 쓸 수 있습니다.'
+    ? '신청하면 책임자가 사이트에서 승인하고 부서·팀과 권한(직원·팀장·부장·전체 보기)을 정해 줍니다.'
     : '권한 신청 후 승인받은 이름과 비밀번호로 로그인합니다.';
   document.getElementById('gPw').autocomplete = su ? 'new-password' : 'current-password';
   document.getElementById('gErr').textContent = '';
 }
 document.getElementById('gateTabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setGMode(b.dataset.g); });
-document.getElementById('gRole').addEventListener('click', e => {
-  const b = e.target.closest('button'); if (!b) return;
-  GROLE = b.dataset.r;
-  document.querySelectorAll('#gRole button').forEach(x => x.classList.toggle('on', x === b));
-});
-
 function authMsg(x) {
   switch (x && x.code) {
     case 'auth/invalid-credential': case 'auth/wrong-password': case 'auth/user-not-found': case 'auth/invalid-email':
@@ -1325,7 +1339,7 @@ document.getElementById('gForm').addEventListener('submit', async e => {
       const cred = await auth.createUserWithEmailAndPassword(nameToEmail(name), pw);
       await cred.user.updateProfile({ displayName: name });
       if (cred.user.email !== OWNER_EMAIL) {
-        await db.collection('members').doc(cred.user.uid).set({ name, role: GROLE, requestedRole: GROLE, dept: '', status: 'pending', requestedAt: nowIso() });
+        await db.collection('members').doc(cred.user.uid).set({ name, role: 'staff', dept: '', team: '', status: 'pending', requestedAt: nowIso() });
       }
       SIGNING_UP = false;
       await loadUser(cred.user);
@@ -1339,28 +1353,28 @@ document.getElementById('gForm').addEventListener('submit', async e => {
 
 async function loadDepts() {
   try {
-    const snap = await db.collection('settings').doc('depts').get();
-    DEPTS = snap.exists && Array.isArray(snap.data().list) ? snap.data().list : [];
-  } catch (x) { DEPTS = []; }
+    const snap = await db.collection('settings').doc('org').get();
+    ORG = snap.exists && Array.isArray(snap.data().depts) ? snap.data().depts : [];
+  } catch (x) { ORG = []; }
 }
 
 async function loadUser(u) {
   if (!u) { USER = null; return; }
   if (u.isAnonymous) { await auth.signOut(); return; }
-  let name = u.displayName || '', status = 'pending', role = 'staff', dept = '';
+  let name = u.displayName || '', status = 'pending', role = 'staff', dept = '', team = '';
   let doc = null;
   try {
     const snap = await db.collection('members').doc(u.uid).get();
     if (snap.exists) doc = snap.data();
   } catch (x) {}
-  if (doc) { name = doc.name || name; status = doc.status || 'pending'; role = doc.role || 'staff'; dept = doc.dept || ''; }
-  if (u.email === OWNER_EMAIL) { status = 'owner'; role = 'manager'; name = name || OWNER_NAME; }
-  USER = { uid: u.uid, name: name || '이름 없음', role, dept, status };
+  if (doc) { name = doc.name || name; status = doc.status || 'pending'; role = doc.role || 'staff'; dept = doc.dept || ''; team = doc.team || ''; }
+  if (u.email === OWNER_EMAIL) { status = 'owner'; role = 'all'; name = name || OWNER_NAME; }
+  USER = { uid: u.uid, name: name || '이름 없음', role, dept, team, status };
   if (!canUse()) {
     document.getElementById('waitTitle').textContent = status === 'denied' ? '사용 권한이 없습니다' : '승인을 기다리고 있습니다';
     document.getElementById('waitText').textContent = status === 'denied'
       ? '책임자가 권한을 막아 둔 계정입니다. 필요하면 책임자에게 말씀해 주세요.'
-      : `${USER.name} 님(${ROLE_KO[role] || '직원'}) 권한 신청이 접수됐습니다. 책임자가 사이트에서 승인하면 바로 쓸 수 있습니다.`;
+      : `${USER.name} 님 권한 신청이 접수됐습니다. 책임자가 사이트에서 승인하면 바로 쓸 수 있습니다.`;
     showGate('wait');
     return;
   }
@@ -1380,7 +1394,7 @@ function enterApp() {
 
 async function logout() {
   if (auth) { try { await auth.signOut(); } catch (e) {} }
-  USER = null; RECORDS = []; LIST_DEPT = '전체';
+  USER = null; RECORDS = []; LIST_DEPT = '전체'; LIST_TEAM = '전체';
   restart();
   document.getElementById('userbox').hidden = true;
   closeVeil('permVeil');
@@ -1394,8 +1408,9 @@ function renderUserbox() {
   const box = document.getElementById('userbox');
   if (!USER || !canUse()) { box.hidden = true; return; }
   const role = isOwner() ? '책임자' : (ROLE_KO[USER.role] || '직원');
+  const place = [USER.dept, USER.team].filter(Boolean).join(' ');
   box.hidden = false;
-  box.innerHTML = `<div class="who">${esc(USER.name)}<span class="role">${role}${USER.dept ? ' · ' + esc(USER.dept) : ''}</span></div>
+  box.innerHTML = `<div class="who">${esc(USER.name)}<span class="role">${role}${place ? ' · ' + esc(place) : ''}</span></div>
     <div class="ub-btns">
       <button type="button" class="${VIEW === 'check' ? 'on' : ''}" onclick="restart()">새 진단</button>
       ${canView() ? `<button type="button" class="${VIEW !== 'check' ? 'on' : ''}" onclick="openList()">저장 목록</button>` : ''}
@@ -1416,7 +1431,7 @@ async function saveCheck() {
   const answers = {};
   Object.keys(A).forEach(k => { if (!['name', 'contact', 'mentorName'].includes(k)) answers[k] = A[k]; });
   const data = {
-    uid: auth.currentUser.uid, mentor: USER.name, mentorRole: USER.role, dept: USER.dept || '',
+    uid: auth.currentUser.uid, mentor: USER.name, mentorRole: USER.role, dept: USER.dept || '', team: USER.team || '',
     name, contact, answers,
     total: r.total, cutoff: r.cutoff, verdict: v.head, pass: v.kind === 'ok',
     track: r.youth ? '청년특례' : '비경활',
@@ -1450,8 +1465,10 @@ async function openList() {
 }
 async function loadRecords() {
   try {
-    // 책임자는 전체, 관리인원은 자기 부서만 불러온다
-    const q = isOwner() ? db.collection('checks') : db.collection('checks').where('dept', '==', USER.dept || '');
+    // 전체 보기는 전부, 부장은 자기 부서, 팀장은 자기 팀만 불러온다
+    let q = db.collection('checks');
+    if (scope() === 'dept') q = q.where('dept', '==', USER.dept || '');
+    if (scope() === 'team') q = q.where('dept', '==', USER.dept || '').where('team', '==', USER.team || '');
     const snap = await q.get();
     RECORDS = snap.docs.map(d => Object.assign({ id: d.id }, d.data()))
       .sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')));
@@ -1459,59 +1476,78 @@ async function loadRecords() {
   if (VIEW === 'list') renderList();
 }
 function shortVerdict(r) { return r.pass ? '가능' : (/요건|대상|어렵/.test(r.verdict || '') ? '대상 아님' : '미달'); }
-function deptOf(r) { return r.dept || '부서 없음'; }
-function filtered() {
-  const k = LIST_Q.replace(/[^0-9가-힣a-zA-Z]/g, '');
+const deptOf = r => r.dept || '부서 없음';
+const teamOf = r => r.team || '팀 없음';
+function filtered(skipQ) {
+  const k = skipQ ? '' : LIST_Q.replace(/[^0-9가-힣a-zA-Z]/g, '');
   return RECORDS.filter(r => (LIST_DEPT === '전체' || deptOf(r) === LIST_DEPT)
+    && (LIST_TEAM === '전체' || teamOf(r) === LIST_TEAM)
     && (!k || (String(r.name || '') + String(r.contact || '') + String(r.mentor || '')).replace(/[^0-9가-힣a-zA-Z]/g, '').includes(k)));
 }
 function listRowsHtml() {
   const rows = filtered();
   if (!RECORDS.length) return '<div class="blank">아직 저장된 진단이 없습니다.</div>';
   if (!rows.length) return '<div class="blank">조건에 맞는 진단이 없습니다.</div>';
+  const tag = r => scope() === 'all' ? placeOf(r) : scope() === 'dept' ? teamOf(r) : '';
   return rows.map(r => `<div class="rec" data-id="${esc(r.id)}" role="button" tabindex="0">
-      <div class="who">${esc(r.name || '이름 없음')}${isOwner() ? `<span class="dtag">${esc(deptOf(r))}</span>` : ''}<small>${esc(r.contact || '—')} · 담당 ${esc(r.mentor || '—')} · ${esc(when(r.savedAt))}</small></div>
+      <div class="who">${esc(r.name || '이름 없음')}${tag(r) ? `<span class="dtag">${esc(tag(r))}</span>` : ''}<small>${esc(r.contact || '—')} · 담당 ${esc(r.mentor || '—')} · ${esc(when(r.savedAt))}</small></div>
       <div class="sc ${r.pass ? 'ok' : ''}">${r.total != null ? r.total : '—'}<small class="${r.pass ? 'ok' : ''}">${shortVerdict(r)}</small></div>
     </div>`).join('');
 }
 function sumHtml() {
   const rows = filtered();
-  return `${LIST_DEPT === '전체' ? '' : esc(LIST_DEPT) + ' · '}<b>${rows.length}</b>건 · 가능 <b>${rows.filter(r => r.pass).length}</b>건`;
+  return `<b>${rows.length}</b>건 · 가능 <b>${rows.filter(r => r.pass).length}</b>건`;
 }
+function chip(group, v, n, on) { return `<button type="button" data-${group}="${esc(v)}" class="${on ? 'on' : ''}">${esc(v)}<b>${n}</b></button>`; }
 function chipsHtml() {
-  if (!isOwner()) return '';
-  const names = Array.from(new Set(DEPTS.concat(RECORDS.map(deptOf))));
-  const all = ['전체'].concat(names);
-  return `<div class="dchips" id="dChips">${all.map(d => {
-    const n = d === '전체' ? RECORDS.length : RECORDS.filter(r => deptOf(r) === d).length;
-    return `<button type="button" data-d="${esc(d)}" class="${LIST_DEPT === d ? 'on' : ''}">${esc(d)}<b>${n}</b></button>`;
-  }).join('')}</div>`;
+  const sc = scope();
+  let html = '';
+  if (sc === 'all') {
+    const depts = Array.from(new Set(ORG.map(o => o.name).concat(RECORDS.map(deptOf))));
+    html += `<div class="dchips" id="dChips">${chip('d', '전체', RECORDS.length, LIST_DEPT === '전체')}${depts.map(d => chip('d', d, RECORDS.filter(r => deptOf(r) === d).length, LIST_DEPT === d)).join('')}</div>`;
+  }
+  const dept = sc === 'all' ? LIST_DEPT : sc === 'dept' ? (USER.dept || '') : null;
+  if (dept && dept !== '전체') {
+    const inDept = RECORDS.filter(r => deptOf(r) === (sc === 'dept' ? deptOf(r) : dept));
+    const teams = Array.from(new Set(teamsOf(dept).concat(inDept.map(teamOf))));
+    html += `<div class="dchips" id="tChips">${chip('t', '전체', inDept.length, LIST_TEAM === '전체')}${teams.map(t => chip('t', t, inDept.filter(r => teamOf(r) === t).length, LIST_TEAM === t)).join('')}</div>`;
+  }
+  return html;
+}
+function listTitle() {
+  const sc = scope();
+  if (sc === 'all') return '전체 저장 진단';
+  if (sc === 'dept') return `${esc(USER.dept || '부서 없음')} 저장 진단`;
+  return `${esc(placeOf(USER))} 저장 진단`;
 }
 function renderList(loading) {
   document.getElementById('backBtn').classList.remove('on');
   document.getElementById('count').textContent = 'Records';
   document.getElementById('bar').style.width = '0%';
   renderIndex(activeSteps(), -1, false);
-  const title = isOwner() ? '저장된 진단 · 부서별' : `${esc(USER.dept || '부서 없음')} 저장 진단`;
+  const label = { all: '전체 보기', dept: '부장 · 우리 부서만', team: '팀장 · 우리 팀만' }[scope()] || '';
   document.getElementById('stage').innerHTML = `<div class="listview">
     <div class="lv-head">
-      <div><div class="kicker">Records</div><h2>${title}</h2></div>
+      <div><div class="kicker">Records · ${label}</div><h2>${listTitle()}</h2></div>
       <button class="act quiet" type="button" onclick="loadRecords()">새로고침</button>
     </div>
-    ${chipsHtml()}
+    <div id="chipWrap">${chipsHtml()}</div>
     <div class="lv-tools">
       <input class="lv-search" id="lvQ" type="search" placeholder="학생명 · 연락처 · 멘토 검색" value="${esc(LIST_Q)}">
       <span class="lv-sum" id="lvSum">${sumHtml()}</span>
     </div>
     <div id="lvRows">${loading ? '<div class="blank">불러오는 중…</div>' : listRowsHtml()}</div>
   </div>`;
-  const redraw = () => { document.getElementById('lvRows').innerHTML = listRowsHtml(); document.getElementById('lvSum').innerHTML = sumHtml(); };
-  document.getElementById('lvQ').oninput = e => { LIST_Q = e.target.value; redraw(); };
-  const chips = document.getElementById('dChips');
-  if (chips) chips.onclick = e => {
+  const redraw = () => {
+    document.getElementById('chipWrap').innerHTML = chipsHtml();
+    document.getElementById('lvRows').innerHTML = listRowsHtml();
+    document.getElementById('lvSum').innerHTML = sumHtml();
+  };
+  document.getElementById('lvQ').oninput = e => { LIST_Q = e.target.value; document.getElementById('lvRows').innerHTML = listRowsHtml(); document.getElementById('lvSum').innerHTML = sumHtml(); };
+  document.getElementById('chipWrap').onclick = e => {
     const b = e.target.closest('button'); if (!b) return;
-    LIST_DEPT = b.dataset.d;
-    chips.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    if (b.dataset.d !== undefined) { LIST_DEPT = b.dataset.d; LIST_TEAM = '전체'; }
+    if (b.dataset.t !== undefined) LIST_TEAM = b.dataset.t;
     redraw();
   };
   const rows = document.getElementById('lvRows');
@@ -1552,20 +1588,27 @@ async function refreshPendingBadge() {
   try { PENDING_COUNT = (await fetchMembers()).filter(m => m.status === 'pending').length; } catch (x) { PENDING_COUNT = 0; }
   renderUserbox();
 }
-async function saveDepts(list) {
-  await db.collection('settings').doc('depts').set({ list, updatedAt: nowIso() });
-  DEPTS = list;
+async function saveOrg(list) {
+  await db.collection('settings').doc('org').set({ depts: list, updatedAt: nowIso() });
+  ORG = list;
 }
 const DRAFT = {};   // 권한 관리에서 고르고 아직 저장하지 않은 값
-function deptSelect(cur, id) {
-  if (DRAFT[id] && DRAFT[id].dept !== undefined) cur = DRAFT[id].dept;
-  const opts = [''].concat(DEPTS);
-  if (cur && !DEPTS.includes(cur)) opts.push(cur);
-  return `<select data-dept="${esc(id)}">${opts.map(d => `<option value="${esc(d)}" ${d === (cur || '') ? 'selected' : ''}>${d ? esc(d) : '부서 없음'}</option>`).join('')}</select>`;
+const draftOf = (id, key, cur) => (DRAFT[id] && DRAFT[id][key] !== undefined) ? DRAFT[id][key] : (cur || '');
+function optList(vals, cur, emptyLabel) {
+  const opts = [''].concat(vals);
+  if (cur && !vals.includes(cur)) opts.push(cur);
+  return opts.map(v => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${v ? esc(v) : emptyLabel}</option>`).join('');
 }
-function roleSelect(cur, id) {
-  if (DRAFT[id] && DRAFT[id].role !== undefined) cur = DRAFT[id].role;
-  return `<select data-role="${esc(id)}">${['staff', 'manager'].map(r => `<option value="${r}" ${r === cur ? 'selected' : ''}>${ROLE_KO[r]}</option>`).join('')}</select>`;
+function deptSelect(id, cur) { return `<select data-k="dept" data-id="${esc(id)}">${optList(ORG.map(o => o.name), cur, '부서 없음')}</select>`; }
+function teamSelect(id, dept, cur) { return `<select data-k="team" data-id="${esc(id)}">${optList(teamsOf(dept), cur, '팀 없음')}</select>`; }
+function roleSelect(id, cur) {
+  return `<select data-k="role" data-id="${esc(id)}">${['staff', 'team', 'dept', 'all'].map(r => `<option value="${r}" ${r === cur ? 'selected' : ''}>${ROLE_KO[r]}</option>`).join('')}</select>`;
+}
+// 권한마다 꼭 있어야 하는 소속을 확인한다
+function checkPlace(role, dept, team) {
+  if (role === 'dept' && !dept) return '부장은 부서를 정해야 합니다';
+  if (role === 'team' && (!dept || !team)) return '팀장은 부서와 팀을 정해야 합니다';
+  return '';
 }
 async function openPerm() {
   if (!isOwner()) return;
@@ -1583,54 +1626,90 @@ async function openPerm() {
     : m.status === 'approved'
       ? `<button class="yes" data-act="approved" data-id="${esc(m.id)}">변경 저장</button><button data-act="denied" data-id="${esc(m.id)}">권한 해제</button>`
       : `<button class="yes" data-act="approved" data-id="${esc(m.id)}">다시 승인</button>`;
+  const ctrls = (id, m) => {
+    const dept = draftOf(id, 'dept', m.dept);
+    return `${m.self ? '' : roleSelect(id, draftOf(id, 'role', m.role || 'staff'))}${deptSelect(id, dept)}<span data-teamslot="${esc(id)}">${teamSelect(id, dept, draftOf(id, 'team', m.team))}</span>`;
+  };
   body.innerHTML = `
     <div class="pm-depts">
-      <div class="pm-sec">부서 목록</div>
-      <div class="chips">${DEPTS.length ? DEPTS.map(d => `<span class="chip">${esc(d)}<button type="button" data-deldept="${esc(d)}" aria-label="${esc(d)} 지우기">×</button></span>`).join('') : '<span class="gate-tip">아직 부서가 없습니다. 아래에서 추가해 주세요.</span>'}</div>
+      <div class="pm-sec">부서 · 팀 목록</div>
+      ${ORG.length ? ORG.map(o => `<div class="org-row">
+          <span class="chip dept">${esc(o.name)}<button type="button" data-deldept="${esc(o.name)}" aria-label="${esc(o.name)} 지우기">×</button></span>
+          ${(o.teams || []).map(t => `<span class="chip">${esc(t)}<button type="button" data-delteam="${esc(t)}" data-of="${esc(o.name)}" aria-label="${esc(t)} 지우기">×</button></span>`).join('')}
+          <span class="addteam"><input maxlength="15" placeholder="팀 추가" data-teamfor="${esc(o.name)}"><button type="button" data-addteam="${esc(o.name)}">+</button></span>
+        </div>`).join('') : '<p class="gate-tip">아직 부서가 없습니다. 아래에서 부서를 먼저 추가해 주세요.</p>'}
       <div class="add"><input id="newDept" maxlength="15" placeholder="부서 이름 (예: 3부서)"><button type="button" id="addDept">부서 추가</button></div>
     </div>
-    <div class="pm-row"><div class="nm">${esc(USER.name)}<small>책임자 · 모든 부서를 볼 수 있음</small></div>
-      <div class="bt">${deptSelect(USER.dept, USER.uid)}<button class="yes" data-act="self" data-id="${esc(USER.uid)}">내 부서 저장</button></div></div>` +
+    <div class="pm-row"><div class="nm">${esc(USER.name)}<small>책임자 · 전체 보기 · 권한 관리</small></div>
+      <div class="bt">${ctrls(USER.uid, { dept: USER.dept, team: USER.team, self: true })}<button class="yes" data-act="self" data-id="${esc(USER.uid)}">내 소속 저장</button></div></div>` +
     (others.length ? groups.map(([st, t]) => {
       const g = others.filter(m => (m.status || 'pending') === st);
       return g.length ? `<div class="pm-sec">${t} ${g.length}명</div>` + g.map(m => `<div class="pm-row">
-          <div class="nm">${esc(m.name || '이름 없음')}<small>신청: ${ROLE_KO[m.requestedRole || m.role] || '직원'} · ${esc(when(m.requestedAt))}</small></div>
-          <div class="bt"><span class="st ${st}">${label[st]}</span>${roleSelect(m.role || 'staff', m.id)}${deptSelect(m.dept, m.id)}${btns(m)}</div>
+          <div class="nm">${esc(m.name || '이름 없음')}<small>${st === 'approved' ? esc((ROLE_KO[m.role] || '직원') + ' · ' + placeOf(m)) : '신청 ' + esc(when(m.requestedAt))}</small></div>
+          <div class="bt"><span class="st ${st}">${label[st]}</span>${ctrls(m.id, m)}${btns(m)}</div>
         </div>`).join('') : '';
     }).join('') : '<div class="blank">아직 권한을 신청한 사람이 없습니다.</div>');
 
-  document.getElementById('addDept').onclick = async () => {
+  const addDept = async () => {
     const v = document.getElementById('newDept').value.trim();
     if (!v) return;
-    if (DEPTS.includes(v)) { toast('이미 있는 부서입니다'); return; }
-    try { await saveDepts(DEPTS.concat(v)); toast(v + ' 부서를 추가했습니다'); openPerm(); } catch (x) { toast('추가하지 못했습니다'); }
+    if (ORG.some(o => o.name === v)) { toast('이미 있는 부서입니다'); return; }
+    try { await saveOrg(ORG.concat({ name: v, teams: [] })); toast(v + '를 추가했습니다'); openPerm(); } catch (x) { toast('추가하지 못했습니다'); }
   };
+  const addTeam = async (dept) => {
+    const inp = body.querySelector(`input[data-teamfor="${CSS.escape(dept)}"]`);
+    const v = inp ? inp.value.trim() : '';
+    if (!v) return;
+    if (teamsOf(dept).includes(v)) { toast('이미 있는 팀입니다'); return; }
+    const next = ORG.map(o => o.name === dept ? { name: o.name, teams: (o.teams || []).concat(v) } : o);
+    try { await saveOrg(next); toast(dept + '에 ' + v + '을 추가했습니다'); openPerm(); } catch (x) { toast('추가하지 못했습니다'); }
+  };
+  document.getElementById('addDept').onclick = addDept;
+  document.getElementById('newDept').onkeydown = e => { if (e.key === 'Enter') addDept(); };
+  body.onkeydown = e => { const t = e.target.dataset && e.target.dataset.teamfor; if (t && e.key === 'Enter') addTeam(t); };
   body.onchange = e => {
-    const t = e.target;
-    if (t.dataset.dept !== undefined) (DRAFT[t.dataset.dept] = DRAFT[t.dataset.dept] || {}).dept = t.value;
-    if (t.dataset.role !== undefined) (DRAFT[t.dataset.role] = DRAFT[t.dataset.role] || {}).role = t.value;
+    const t = e.target; if (!t.dataset.k) return;
+    const id = t.dataset.id;
+    (DRAFT[id] = DRAFT[id] || {})[t.dataset.k] = t.value;
+    if (t.dataset.k === 'dept') {
+      // 부서를 바꾸면 그 부서의 팀만 고를 수 있게 다시 채운다
+      DRAFT[id].team = '';
+      const slot = body.querySelector(`[data-teamslot="${CSS.escape(id)}"]`);
+      if (slot) slot.innerHTML = teamSelect(id, t.value, '');
+    }
   };
-  document.getElementById('newDept').onkeydown = e => { if (e.key === 'Enter') document.getElementById('addDept').click(); };
   body.onclick = async e => {
-    const del = e.target.closest('button[data-deldept]');
-    if (del) {
-      try { await saveDepts(DEPTS.filter(d => d !== del.dataset.deldept)); openPerm(); } catch (x) { toast('지우지 못했습니다'); }
+    const at = e.target.closest('button[data-addteam]');
+    if (at) { addTeam(at.dataset.addteam); return; }
+    const dd = e.target.closest('button[data-deldept]');
+    if (dd) {
+      if (!confirm(dd.dataset.deldept + '를 목록에서 지울까요?\n이미 저장된 진단과 사람의 소속은 그대로 남습니다.')) return;
+      try { await saveOrg(ORG.filter(o => o.name !== dd.dataset.deldept)); openPerm(); } catch (x) { toast('지우지 못했습니다'); }
+      return;
+    }
+    const dt = e.target.closest('button[data-delteam]');
+    if (dt) {
+      const next = ORG.map(o => o.name === dt.dataset.of ? { name: o.name, teams: (o.teams || []).filter(x => x !== dt.dataset.delteam) } : o);
+      try { await saveOrg(next); openPerm(); } catch (x) { toast('지우지 못했습니다'); }
       return;
     }
     const b = e.target.closest('button[data-act]'); if (!b) return;
     const id = b.dataset.id;
-    const dSel = body.querySelector(`select[data-dept="${CSS.escape(id)}"]`);
-    const rSel = body.querySelector(`select[data-role="${CSS.escape(id)}"]`);
-    const dept = dSel ? dSel.value : '';
+    const val = k => { const el = body.querySelector(`select[data-k="${k}"][data-id="${CSS.escape(id)}"]`); return el ? el.value : ''; };
+    const dept = val('dept'), team = val('team'), role = val('role') || 'staff';
+    if (b.dataset.act === 'approved') {
+      const msg = checkPlace(role, dept, team);
+      if (msg) { toast(msg); return; }
+    }
     b.disabled = true;
     try {
       if (b.dataset.act === 'self') {
-        await db.collection('members').doc(id).set({ name: USER.name, role: 'manager', requestedRole: 'manager', dept, status: 'approved', requestedAt: nowIso() });
-        USER.dept = dept; renderUserbox();
-        toast('내 부서를 저장했습니다');
+        await db.collection('members').doc(id).set({ name: USER.name, role: 'all', dept, team, status: 'approved', requestedAt: nowIso() });
+        USER.dept = dept; USER.team = team; renderUserbox();
+        toast('내 소속을 저장했습니다');
       } else {
         const patch = { status: b.dataset.act, decidedAt: nowIso() };
-        if (b.dataset.act === 'approved') { patch.dept = dept; patch.role = rSel ? rSel.value : 'staff'; }
+        if (b.dataset.act === 'approved') Object.assign(patch, { role, dept, team });
         await db.collection('members').doc(id).update(patch);
         toast(b.dataset.act === 'approved' ? '승인 내용을 저장했습니다' : '권한을 막았습니다');
       }
@@ -1639,6 +1718,17 @@ async function openPerm() {
     } catch (x) { b.disabled = false; toast('바꾸지 못했습니다'); }
   };
 }
+
+
+/* ---------- 인쇄 막기 ---------- */
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P')) {
+    e.preventDefault(); e.stopImmediatePropagation();
+    toast('이 화면은 인쇄할 수 없습니다');
+  }
+}, true);
+window.print = function () { toast('이 화면은 인쇄할 수 없습니다'); };
+window.addEventListener('beforeprint', () => toast('이 화면은 인쇄할 수 없습니다'));
 
 /* ---------- 시작 ---------- */
 if (auth) {
