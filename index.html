@@ -542,6 +542,19 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 .board button.alert { border-color: #F5C451; background: #FFF8E6; color: #7A5200; }
 .board button.alert.on { background: #9A6700; border-color: #9A6700; color: var(--paper); }
 #permBoard .board { margin: 14px 0 4px; }
+
+/* ---------- 주 30시간 근무 · 방법 체크 ---------- */
+.verdict.cond { background: #FFF8E6; border: 1px solid #F5C451; }
+.verdict.cond .head { color: #7A5200; }
+.fixbox { border-top: 3px solid #F5C451; }
+.fix-lead { font-size: 14px; color: var(--g700); line-height: 1.8; margin: 4px 0 14px; }
+.fix-item { display: flex; gap: 12px; align-items: flex-start; padding: 14px 14px; border: 1px solid var(--g100); margin-top: 8px; cursor: pointer; transition: background .15s, border-color .15s; }
+.fix-item:hover { border-color: #F5C451; }
+.fix-item.on { background: #FFF8E6; border-color: #F5C451; }
+.fix-item input { margin-top: 3px; width: 18px; height: 18px; accent-color: #9A6700; flex: 0 0 auto; }
+.fix-item b { display: block; font-size: 15px; font-weight: 700; color: var(--black); letter-spacing: -0.02em; }
+.fix-item small { display: block; margin-top: 4px; font-size: 13px; color: var(--g500); line-height: 1.7; }
+.fix-item input:disabled { cursor: default; }
 </style>
 </head>
 <body>
@@ -852,6 +865,17 @@ const STEPS = [
     value: () => A.dup,
   },
   {
+    id: 'job30', eyebrow: '근무', when: () => A.ageBand !== 'x',
+    ask: '지금 주 30시간 이상 일하고 있나요?',
+    helper: '현재 기준입니다. 아르바이트·계약직도 포함하며, 근로계약서의 주당 근무시간으로 봅니다.',
+    choices: () => [
+      { id: 'y', lab: '네, 주 30시간 이상 일하고 있어요', note: '신청 방법을 결과에서 함께 안내합니다' },
+      { id: 'n', lab: '아니요', note: '일하지 않거나 주 30시간 미만으로 일하고 있어요' },
+    ],
+    pick: v => { A.job30 = (v === 'y'); },
+    value: () => A.job30 === undefined ? undefined : (A.job30 ? 'y' : 'n'),
+  },
+  {
     id: 'ready', eyebrow: '확인', when: () => A.ageBand !== 'x',
     ask: '지금 바로 일할 수 있나요?',
     helper: '구직 의사가 없거나 건강 때문에 당장 일하기 어려우면 수급 대상에서 제외됩니다.',
@@ -893,6 +917,7 @@ function calc() {
     incomeOver: !!(incomeOpt && incomeOpt.over),
     assetOver: !!(assetOpt && assetOpt.over),
     notReady: A.ready === false,
+    working: A.job30 === true,
   };
 }
 function verdictOf(r) {
@@ -901,6 +926,17 @@ function verdictOf(r) {
   if (r.incomeOver) return { kind: 'no', head: '소득 요건을 넘습니다', why: r.youth ? '청년특례도 기준 중위소득 120% 이하까지만 선발형 대상입니다.' : '중위소득 60% 이하까지만 선발형 대상입니다. 만 15~34세라면 나이를 다시 확인해 보세요.' };
   if (r.assetOver) return { kind: 'no', head: '재산 요건을 넘습니다', why: `재산 합계가 ${money(ASSET_CAP[r.track])}을 넘으면 선발형 대상이 아닙니다.` };
   if (r.cutoff === null) return { kind: 'none', head: '점수가 나왔습니다', why: '가능 여부를 표시하려면 기준 점수가 필요합니다. 관리자에게 기준 점수 설정을 요청해 주세요.' };
+  // 주 30시간 이상 근무 중: 안 된다고 끝내지 않고, 조건을 맞추면 되는지 보여 준다
+  if (r.working) {
+    const enough = r.total >= r.cutoff;
+    return {
+      kind: 'cond',
+      head: enough ? '근무 조건만 맞추면 신청할 수 있습니다' : '근무 조건과 점수를 함께 맞춰야 합니다',
+      why: enough
+        ? `지금은 주 30시간 이상 근무 중이라 바로 신청할 수는 없습니다. 아래 방법으로 근무 조건을 맞추면 이 점수(${r.total}점, 기준 ${r.cutoff}점)로 신청할 수 있습니다.`
+        : `지금은 주 30시간 이상 근무 중이라 바로 신청할 수 없고, 점수도 기준 ${r.cutoff}점까지 ${r.cutoff - r.total}점 남았습니다. 아래 근무 조건과 모자란 부분을 함께 점검해 보세요.`,
+    };
+  }
   if (r.total >= r.cutoff) return { kind: 'ok', head: 'Ⅰ유형 선발형 신청 가능', why: `기준 ${r.cutoff}점을 ${r.total - r.cutoff}점 넘겼습니다. 선발 인원은 예산 범위에서 정해지므로 최종 결과는 고용센터 심사로 확정됩니다.` };
   return { kind: 'no', head: '기준 점수가 모자랍니다', why: `기준 ${r.cutoff}점까지 ${r.cutoff - r.total}점 남았습니다. 가구원 수나 소득을 다시 확인해 보시고 상담자와 함께 점검해 보세요.` };
 }
@@ -1101,6 +1137,35 @@ function urgeHtml(r, v) {
   </div>`;
 }
 
+// 주 30시간 이상 근무 중일 때 고를 수 있는 방법 (체크하면 저장본에도 남는다)
+const WORK_FIXES = [
+  { id: 'hours', ttl: '근무시간을 주 30시간 미만으로 조정',
+    txt: '주 30시간 미만으로 일하는 근로자는 참여를 검토받을 수 있습니다. 근로계약서상 주당 근무시간이 바뀌어야 하므로 회사와 먼저 조정한 뒤 신청합니다.' },
+  { id: 'quit', ttl: '퇴사 · 계약 종료 후 신청',
+    txt: '일을 그만둔 뒤 신청합니다. 고용보험에 가입돼 있었고 회사 사정 등으로 그만두면 실업급여 대상일 수 있는데, 실업급여를 받는 동안에는 이 제도에 참여할 수 없습니다. 어느 쪽이 유리한지 먼저 따져 봅니다.' },
+  { id: 'biz', ttl: '사업·프리랜서 소득이라면 월 250만 원 미만인지 확인',
+    txt: '회사에 고용된 근로가 아니라 사업·프리랜서 소득이라면 근무시간 대신 월 소득이 250만 원 미만인지로 봅니다.' },
+  { id: 'recheck', ttl: '조건을 바꾼 뒤 소득·취업 기간 다시 확인',
+    txt: '근무가 바뀌면 가구 소득과 최근 2년 취업 기간 답도 달라질 수 있습니다. 바뀐 상황으로 이 진단을 한 번 더 해 보세요.' },
+];
+function fixHtml(r) {
+  if (!r.working) return '';
+  const on = id => Array.isArray(A.fixes) && A.fixes.includes(id);
+  const ro = VIEW === 'record';
+  return `<div class="guide fixbox">
+    <div class="guide-head">
+      <span class="kick">Check</span>
+      <span class="ttl">주 30시간 이상 근무 중 · 신청 방법 체크</span>
+    </div>
+    <p class="fix-lead">지금 일하고 있다고 끝난 것이 아닙니다. 아래 방법 중 해당하는 것을 체크해 보세요.${ro ? '' : ' 체크한 내용은 저장할 때 함께 남습니다.'}</p>
+    ${WORK_FIXES.map(f => `<label class="fix-item ${on(f.id) ? 'on' : ''}">
+      <input type="checkbox" data-fix="${f.id}" ${on(f.id) ? 'checked' : ''} ${ro ? 'disabled' : ''}>
+      <span><b>${esc(f.ttl)}</b><small>${esc(f.txt)}</small></span>
+    </label>`).join('')}
+    <div class="guide-note">어떤 방법이 맞는지는 근무 형태와 실업급여 대상 여부에 따라 달라집니다. <b>담당 멘토와 함께 정한 뒤 신청 시기를 잡으세요.</b> 최종 판단은 고용센터에서 합니다.</div>
+  </div>`;
+}
+
 function guideHtml(r, v) {
   if (v.kind === 'ok') return '';
   const items = gapsOf(r);
@@ -1139,7 +1204,7 @@ function resultHtml() {
   if (r.dupPt) rows.push({ k: '유사 제도 수혜 감점', s: r.dupBand.lab, v: r.dupPt, cls: 'minus' });
 
   return `<div class="result">
-    <div class="verdict ${v.kind === 'ok' ? 'ok' : ''}">
+    <div class="verdict ${v.kind === 'ok' ? 'ok' : v.kind === 'cond' ? 'cond' : ''}">
       ${scoreShown ? `<div class="score">${r.total}<span>점</span></div>` : ''}
       <div class="head">${esc(v.head)}</div>
       <div class="why">${esc(v.why)}</div>
@@ -1163,6 +1228,7 @@ function resultHtml() {
       <div class="line sum"><span class="k">합계</span><span class="v">${r.total}점</span></div>
     </div>` : ''}
 
+    ${fixHtml(r)}
     ${urgeHtml(r, v)}
     ${guideHtml(r, v)}
 
@@ -1236,6 +1302,15 @@ function wireResult() {
     else if (d.length > 3) out = d.slice(0, 3) + '-' + d.slice(3);
     e.target.value = out; A.contact = out; markDirty();
   };
+  document.querySelectorAll('input[data-fix]').forEach(cb => {
+    cb.onchange = () => {
+      const set = new Set(Array.isArray(A.fixes) ? A.fixes : []);
+      if (cb.checked) set.add(cb.dataset.fix); else set.delete(cb.dataset.fix);
+      A.fixes = WORK_FIXES.map(f => f.id).filter(id => set.has(id));
+      cb.closest('.fix-item').classList.toggle('on', cb.checked);
+      markDirty();
+    };
+  });
   const sb = document.getElementById('saveBtn');
   if (sb) sb.onclick = saveCheck;
   const del = document.getElementById('delBtn');
@@ -1502,7 +1577,7 @@ async function loadRecords() {
   } catch (x) { toast('목록을 불러오지 못했습니다. 권한을 확인해 주세요'); RECORDS = []; }
   if (VIEW === 'list') renderList();
 }
-function shortVerdict(r) { return r.pass ? '가능' : (/요건|대상|어렵/.test(r.verdict || '') ? '대상 아님' : '미달'); }
+function shortVerdict(r) { return r.pass ? '가능' : /근무/.test(r.verdict || '') ? '근무 조정' : (/요건|대상|어렵/.test(r.verdict || '') ? '대상 아님' : '미달'); }
 const EXEC = '임원';
 // 진단 한 건이 들어갈 칸 [부서, 팀]. 부서 없이 임원이 저장한 건은 '임원' 칸
 function keyOfRec(r) { if (r.dept) return [r.dept, r.team || '']; if (r.mentorRole === 'all') return [EXEC, '']; return ['', '']; }
